@@ -106,8 +106,8 @@ def get_model(model_name, **kwargs):
             verbose=0,
             cat_features=kwargs.get('cat_features', None),
             # ! GPU training is non-deterministic https://catboost.ai/en/docs/features/training-on-gpu
-            task_type='GPU',
-            devices='0:1',
+            # task_type='GPU',
+            # devices='0:1',
         )
     
 skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
