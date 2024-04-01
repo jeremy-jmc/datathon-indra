@@ -98,7 +98,7 @@ print(f'variables categoricas: {df.select_dtypes("category").columns}')
 print(f'variables numericas: {df.select_dtypes("number").columns}')
 print(f'otras variables: {df.select_dtypes(exclude=["number", "category"]).columns}')
 
-df = df.drop(columns=['id_ultimo_jefe', 'mes_incorporacion', 'tiempo_empresa', 'edad'])
+df = df.drop(columns=['id_ultimo_jefe'])
 df.to_parquet(f'../data/processed/{ds_type}_data.parquet', index=False,)
 
 """

@@ -102,6 +102,10 @@ y = data_train[TARGET_VAR]
 def get_model(model_name, **kwargs):
     if model_name == 'catboost':
         return CatBoostClassifier(
+            iterations=1000,
+            depth=8,
+            loss_function='Logloss',
+            eval_metric='F1',
             random_state=SEED,
             verbose=0,
             cat_features=kwargs.get('cat_features', None),
@@ -114,12 +118,12 @@ skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 
 f1_macros = []
 for train_idx, test_idx in skf.split(X, y):
-    cat_model = get_model('catboost', cat_features=categorical_cols)
+    model = get_model('catboost', cat_features=categorical_cols)
     X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
     y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
-    cat_model.fit(X_train, y_train)
-    y_pred = cat_model.predict(X_test)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
 
     print(classification_report(y_test, y_pred))
     # print(confusion_matrix(y_test, y_pred))
@@ -145,3 +149,9 @@ print(model.get_feature_importance(prettified=True))
 
 # 11. Deploy model/Submit predictions
 # 12. Monitor model
+print(X.columns)
+df_test[TARGET_VAR] = model.predict(df_test[X.columns])
+print(df_test[TARGET_VAR].value_counts(normalize=True))
+
+df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
+    .to_csv('../submissions/submission.csv', index=False)
