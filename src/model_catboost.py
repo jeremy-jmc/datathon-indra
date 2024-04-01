@@ -154,4 +154,4 @@ df_test[TARGET_VAR] = model.predict(df_test[X.columns])
 print(df_test[TARGET_VAR].value_counts(normalize=True))
 
 df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
-    .to_csv('../submissions/submission.csv', index=False)
+    .to_csv('../submissions/submission_feature_eng_graph_degree.csv', index=False)

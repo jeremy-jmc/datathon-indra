@@ -64,11 +64,11 @@ mpl.rcParams['figure.dpi'] = 100
 warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore')
 
-ds_type = 'train'
+ds_type = 'test'
 df = pd.read_csv(f'../data/raw/{ds_type}_data.csv', sep=';')
 
 df['id_colaborador'] = df['id_colaborador'].astype('string')
-df['id_ultimo_jefe'] = df['id_ultimo_jefe'].astype('object')
+df['id_ultimo_jefe'] = df['id_ultimo_jefe'].astype('Int64').astype('string')
 df['seniority'] = df['seniority'].replace({1: 'No', 2: 'Si'}).astype('category')
 df['modalidad_trabajo'] = df['modalidad_trabajo'].astype('category')
 # distancia_oficina
@@ -79,10 +79,15 @@ df['canal_reclutamiento'] = df['canal_reclutamiento'].astype('category')
 df['fecha_nacimiento'] = pd.to_datetime(df['fecha_nacimiento'], format='%d/%m/%Y')
 df['edad'] = (datetime.datetime.now() - df['fecha_nacimiento']).dt.days // 365
 # salario
+df['ratio_salario_distancia'] = df['salario'] / df['distancia_oficina']
 # performance_score
 # psi_score
+df['ratio_salario_psi_score'] = df['salario'] / df['psi_score']
 df['fecha_incorporacion'] = pd.to_datetime(df['fecha_incorporacion'], format='%d/%m/%Y')
+df['edad_cuando_se_incorporo'] = (df['fecha_incorporacion'] - df['fecha_nacimiento']).dt.days // 365
 df['mes_incorporacion'] = df['fecha_incorporacion'].dt.month
+df['trimestre_incorporacion'] = df['fecha_incorporacion'].dt.quarter
+df['trimestre_incorporacion'] = df['trimestre_incorporacion'].replace({1: 'Q1', 2: 'Q2', 3: 'Q3', 4: 'Q4'}).astype('category')
 df['tiempo_empresa'] = (datetime.datetime.now() - df['fecha_incorporacion']).dt.days // 365
 df['estado_civil'] = df['estado_civil'].astype('category')
 # df['abandono_6meses'] = df['abandono_6meses'].astype('category')
@@ -98,8 +103,6 @@ print(f'variables categoricas: {df.select_dtypes("category").columns}')
 print(f'variables numericas: {df.select_dtypes("number").columns}')
 print(f'otras variables: {df.select_dtypes(exclude=["number", "category"]).columns}')
 
-df = df.drop(columns=['id_ultimo_jefe'])
-df.to_parquet(f'../data/processed/{ds_type}_data.parquet', index=False,)
 
 """
 OBS:
@@ -113,3 +116,25 @@ OBS:
 
 df['mes_incorporacion'].plot(kind='hist', bins=4)
 
+import networkx as nx
+from pyvis.network import Network
+
+# create a graph from the columns id_colaborador and id_ultimo_jefe
+G = nx.from_pandas_edgelist(df.dropna(how='any'), source='id_colaborador', target='id_ultimo_jefe')
+
+# # create a network from the graph
+# nt = Network("750px", "1500px", notebook=True)
+# nt.force_atlas_2based(gravity=-50)
+# nt.from_nx(G)
+
+# nt.show_buttons(filter_=['physics'])
+# nt.show('nx.html')
+
+
+degree_dict = dict(G.degree())
+df_degree = pd.DataFrame(list(degree_dict.items()), columns=['id_colaborador', 'degree'])
+
+df = df.merge(df_degree, on='id_colaborador', how='left')
+
+df = df.drop(columns=['id_ultimo_jefe'])
+df.to_parquet(f'../data/processed/{ds_type}_data.parquet', index=False,)
