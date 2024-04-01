@@ -10,9 +10,9 @@ import os
 # from imblearn.over_sampling import SMOTE, ADASYN, RandomOverSampler
 # from imblearn.under_sampling import RandomUnderSampler, TomekLinks, NearMiss
 # from imblearn.ensemble import BalancedBaggingClassifier
-from catboost import CatBoostClassifier#!, CatBoostRegressor, Pool, cv
-# from lightgbm import LGBMClassifier, LGBMRegressor
-# from xgboost import XGBClassifier, XGBRegressor
+from catboost import CatBoostClassifier#, CatBoostRegressor, Pool, cv
+from lightgbm import LGBMClassifier#, LGBMRegressor
+from xgboost import XGBClassifier#, XGBRegressor
 # import pycaret
 # import shap
 # import eli5
@@ -34,17 +34,18 @@ from sklearn.metrics import f1_score, confusion_matrix, classification_report# ,
 # from sklearn.decomposition import PCA
 # from sklearn.impute import KNNImputer	# MissRanger
 # from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, plot_tree
-# from sklearn.ensemble import IsolationForest, HistGradientBoostingRegressor, RandomForestClassifier
+from sklearn.ensemble import IsolationForest, HistGradientBoostingRegressor, RandomForestClassifier
 # from sklearn.preprocessing import RobustScaler, StandardScaler, MinMaxScaler
 
-SEED = 42
+SEED = 123
 np.random.seed(SEED)
 random.seed(SEED)
 
 # Steps:
 # 1. Load data
-df_train = pd.read_parquet('../data/processed/train_data.parquet')
-df_test = pd.read_parquet('../data/processed/test_data.parquet')
+deleted_columns = []    # "performance_score"
+df_train = pd.read_parquet('../data/processed/train_data.parquet').drop(columns=deleted_columns)
+df_test = pd.read_parquet('../data/processed/test_data.parquet').drop(columns=deleted_columns)
 
 categorical_cols = df_train.select_dtypes(include=['category']).columns.to_list()
 numerical_cols = df_train.select_dtypes(include=['number']).columns.to_list()
@@ -103,7 +104,7 @@ def get_model(model_name, **kwargs):
     if model_name == 'catboost':
         return CatBoostClassifier(
             iterations=1000,
-            depth=8,
+            depth=10,
             loss_function='Logloss',
             eval_metric='F1',
             random_state=SEED,
@@ -113,12 +114,41 @@ def get_model(model_name, **kwargs):
             # task_type='GPU',
             # devices='0:1',
         )
+    elif model_name == 'random_forest':
+        return RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
+            random_state=SEED,
+            n_jobs=N_JOBS,
+        )
+    elif model_name == 'hist_gradient_boosting':
+        return HistGradientBoostingRegressor(
+            max_iter=100,
+            max_depth=10,
+            random_state=SEED,
+        )
+    elif model_name == 'lgbm':
+        return LGBMClassifier(
+            n_estimators=100,
+            max_depth=10,
+            random_state=SEED,
+            n_jobs=N_JOBS,
+        )
+    elif model_name == 'xgb':
+        return XGBClassifier(
+            n_estimators=200,
+            max_depth=10,
+            objective='binary:logistic', 
+            tree_method='hist',
+            enable_categorical=True,
+            random_state=SEED,
+        )
     
 skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 
 f1_macros = []
 for train_idx, test_idx in skf.split(X, y):
-    model = get_model('catboost', cat_features=categorical_cols)
+    model = get_model('xgb')# get_model('catboost', cat_features=categorical_cols)
     X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
     y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
@@ -135,7 +165,7 @@ print(f'f1_macro: {np.mean(f1_macros)}')
 # 6. Tune hyperparameters
 # 7. Make predictions
 # 8. Save model
-model = get_model('catboost', cat_features=categorical_cols)
+model = get_model('xgb')#get_model('catboost', cat_features=categorical_cols)
 model.fit(X, y)
 
 # 9. Load model
@@ -145,7 +175,7 @@ model.fit(X, y)
 # 		- Individual conditional expectation plots
 # 		- LIME
 # 		- ELI5
-print(model.get_feature_importance(prettified=True))
+# print(model.get_feature_importance(prettified=True))
 
 # 11. Deploy model/Submit predictions
 # 12. Monitor model
@@ -153,5 +183,7 @@ print(X.columns)
 df_test[TARGET_VAR] = model.predict(df_test[X.columns])
 print(df_test[TARGET_VAR].value_counts(normalize=True))
 
-df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
-    .to_csv('../submissions/submission_feature_eng_graph_degree.csv', index=False)
+# df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
+#     .to_csv('../submissions/submission_xgb_feature_eng_graph_degree_drop_perforscore.csv', index=False)
+
+
