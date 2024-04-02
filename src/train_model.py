@@ -129,10 +129,10 @@ def get_model(model_name, **kwargs):
         )
     elif model_name == 'lgbm':
         return LGBMClassifier(
-            n_estimators=200,
+            n_estimators=100,
             max_depth=10,
             random_state=SEED,
-            verbose=-1,
+            n_jobs=N_JOBS,
         )
     elif model_name == 'xgb':
         return XGBClassifier(
@@ -148,11 +148,11 @@ skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 
 f1_macros = []
 for train_idx, test_idx in skf.split(X, y):
-    model = get_model('lgbm')# get_model('catboost', cat_features=categorical_cols)
+    model = get_model('xgb')# get_model('catboost', cat_features=categorical_cols)
     X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
     y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
-    model.fit(X_train, y_train, categorical_feature=categorical_cols)
+    model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
     print(classification_report(y_test, y_pred))
@@ -165,7 +165,7 @@ print(f'f1_macro: {np.mean(f1_macros)}')
 # 6. Tune hyperparameters
 # 7. Make predictions
 # 8. Save model
-model = get_model('lgbm')#get_model('catboost', cat_features=categorical_cols)
+model = get_model('xgb')#get_model('catboost', cat_features=categorical_cols)
 model.fit(X, y)
 
 # 9. Load model
@@ -183,7 +183,11 @@ print(X.columns)
 df_test[TARGET_VAR] = model.predict(df_test[X.columns])
 print(df_test[TARGET_VAR].value_counts(normalize=True))
 
-# df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
-#     .to_csv('../submissions/submission_xgb_feature_eng_graph_degree_drop_perforscore.csv', index=False)
+df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
+    .to_csv('../submissions/submission_xgb_feature_eng_graph_degree.csv', index=False)
 
 
+importances = model.feature_importances_
+feature_names = X_train.columns
+feature_importances = sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True)
+feature_importances
