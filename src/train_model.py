@@ -27,14 +27,16 @@ from xgboost import XGBClassifier#, XGBRegressor
 from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split# , GridSearchCV, KFold, RepeatedStratifiedKFold
 from sklearn.metrics import f1_score, confusion_matrix, classification_report# , jaccard_score
 # from sklearn.metrics.pairwise import cosine_similarity
-# from sklearn.neighbors import KDTree
+from sklearn.neighbors import KDTree, KNeighborsClassifier
 # from sklearn.clustering import KMeans
 # from sklearn.mixture import GaussianMixture
 # from sklearn.manifold import TSNE
 # from sklearn.decomposition import PCA
 # from sklearn.impute import KNNImputer	# MissRanger
-# from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, plot_tree
-from sklearn.ensemble import IsolationForest, HistGradientBoostingRegressor, RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, plot_tree, ExtraTreeClassifier
+from sklearn.ensemble import IsolationForest, HistGradientBoostingClassifier, RandomForestClassifier, AdaBoostClassifier
+from sklearn.multiclass import OneVsOneClassifier
+from sklearn.svm import SVC, LinearSVC
 # from sklearn.preprocessing import RobustScaler, StandardScaler, MinMaxScaler
 
 SEED = 42
@@ -44,9 +46,9 @@ random.seed(SEED)
 # Steps:
 # 1. Load data
 deleted_columns = ['degree', 
-                   'ratio_salario_psi_score', 'ratio_salario_distancia', 
-                   'edad_cuando_se_incorporo', 'trimestre_incorporacion',
-                   'mes_incorporacion', 'edad',
+                #    'ratio_salario_psi_score', 'ratio_salario_distancia', 
+                #    'edad_cuando_se_incorporo', 'trimestre_incorporacion',
+                #    'mes_incorporacion', 'edad',
                 #    'performance_score'
                    ]
 df_train = pd.read_parquet('../data/processed/train_data.parquet').drop(columns=deleted_columns)
@@ -85,6 +87,7 @@ print(data_train.columns)
 print(data_train[TARGET_VAR].value_counts(normalize=True))
 
 X = data_train.drop(columns=[TARGET_VAR])
+X = pd.get_dummies(X)
 y = data_train[TARGET_VAR]
 
 # 3. Build a baseline model
@@ -127,7 +130,7 @@ def get_model(model_name, **kwargs):
             n_jobs=N_JOBS,
         )
     elif model_name == 'hist_gradient_boosting':
-        return HistGradientBoostingRegressor(
+        return HistGradientBoostingClassifier(
             max_iter=25,
             max_depth=4,
             random_state=SEED,
@@ -167,7 +170,8 @@ skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 # print(f'f1_binary: {np.mean(f1_binary)}')
 # print(f'f1_binary: {np.std(f1_binary)}')
 
-model = get_model('lgbm')
+model = OneVsOneClassifier(LinearSVC(dual="auto", random_state=42))
+# SVC(random_state=SEED, probability=True)
 # get_model('xgb')
 # get_model('lgbm')
 # get_model('catboost', cat_features=categorical_cols)
@@ -186,13 +190,13 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 model.fit(X_train, y_train)
 
 FACTOR = 0.48
-# y_pred = model.predict(X_train)
-y_pred = (model.predict_proba(X_train)[:, 1] > FACTOR).astype(int)
+y_pred = model.predict(X_train)
+# y_pred = (model.predict_proba(X_train)[:, 1] > FACTOR).astype(int)
 print(classification_report(y_train, y_pred))
 # print(confusion_matrix(y_train, y_pred))
 
-# y_pred = model.predict(X_test)
-y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
+y_pred = model.predict(X_test)
+# y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
 print(classification_report(y_test, y_pred))
 # print(confusion_matrix(y_test, y_pred))
 
@@ -203,15 +207,16 @@ print(classification_report(y_test, y_pred))
 # 		- Individual conditional expectation plots
 # 		- LIME
 # 		- ELI5
-importances = model.feature_importances_
-feature_names = X.columns
-feature_importances = pd.DataFrame(sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True), columns=['feature', 'importance'])
-feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', figsize=(10, 6))
+# importances = model.feature_importances_
+# feature_names = X.columns
+# feature_importances = pd.DataFrame(sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True), columns=['feature', 'importance'])
+# feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', figsize=(10, 6))
 
 
 # 11. Deploy model/Submit predictions
 # 12. Monitor model
 print(X.columns)
+df_test = pd.get_dummies(df_test)
 df_test[TARGET_VAR] = model.predict(df_test[X.columns])
 print(df_test[TARGET_VAR].value_counts(normalize=True))
 print(df_test[TARGET_VAR].value_counts())

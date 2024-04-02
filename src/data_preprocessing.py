@@ -80,7 +80,8 @@ df['fecha_nacimiento'] = pd.to_datetime(df['fecha_nacimiento'], format='%d/%m/%Y
 df['edad'] = (datetime.datetime.now() - df['fecha_nacimiento']).dt.days // 365
 # salario
 df['ratio_salario_distancia'] = df['salario'] / df['distancia_oficina']
-# performance_score
+# performance_score fillna mean
+df['performance_score'] = df['performance_score'].fillna(df['performance_score'].mean())
 # psi_score
 df['ratio_salario_psi_score'] = df['salario'] / df['psi_score']
 df['fecha_incorporacion'] = pd.to_datetime(df['fecha_incorporacion'], format='%d/%m/%Y')
