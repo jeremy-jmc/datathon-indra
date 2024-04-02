@@ -24,7 +24,7 @@ from xgboost import XGBClassifier#, XGBRegressor
 # import statsmodels.formula.api as smf
 # import statsmodels.stats.api as sms
 
-from sklearn.model_selection import StratifiedKFold# train_test_split, GridSearchCV, KFold, RepeatedStratifiedKFold, cross_val_score
+from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split# , GridSearchCV, KFold, RepeatedStratifiedKFold
 from sklearn.metrics import f1_score, confusion_matrix, classification_report# , jaccard_score
 # from sklearn.metrics.pairwise import cosine_similarity
 # from sklearn.neighbors import KDTree
@@ -37,13 +37,18 @@ from sklearn.metrics import f1_score, confusion_matrix, classification_report# ,
 from sklearn.ensemble import IsolationForest, HistGradientBoostingRegressor, RandomForestClassifier
 # from sklearn.preprocessing import RobustScaler, StandardScaler, MinMaxScaler
 
-SEED = 123
+SEED = 42
 np.random.seed(SEED)
 random.seed(SEED)
 
 # Steps:
 # 1. Load data
-deleted_columns = []    # "performance_score"
+deleted_columns = ['degree', 
+                   'ratio_salario_psi_score', 'ratio_salario_distancia', 
+                   'edad_cuando_se_incorporo', 'trimestre_incorporacion',
+                   'mes_incorporacion', 'edad',
+                #    'performance_score'
+                   ]
 df_train = pd.read_parquet('../data/processed/train_data.parquet').drop(columns=deleted_columns)
 df_test = pd.read_parquet('../data/processed/test_data.parquet').drop(columns=deleted_columns)
 
@@ -55,7 +60,7 @@ print(f'numerical_cols: {numerical_cols}')
 print(f'other_cols: {other_cols}')
 
 TARGET_VAR = 'abandono_6meses'
-N_FOLDS = 3
+N_FOLDS = 10
 N_JOBS = os.cpu_count() // 2.5
 
 # 2. Prepare data
@@ -103,8 +108,8 @@ y = data_train[TARGET_VAR]
 def get_model(model_name, **kwargs):
     if model_name == 'catboost':
         return CatBoostClassifier(
-            iterations=1000,
-            depth=10,
+            iterations=25,
+            depth=4,
             loss_function='Logloss',
             eval_metric='F1',
             random_state=SEED,
@@ -116,28 +121,33 @@ def get_model(model_name, **kwargs):
         )
     elif model_name == 'random_forest':
         return RandomForestClassifier(
-            n_estimators=100,
-            max_depth=10,
+            n_estimators=25,
+            max_depth=4,
             random_state=SEED,
             n_jobs=N_JOBS,
         )
     elif model_name == 'hist_gradient_boosting':
         return HistGradientBoostingRegressor(
-            max_iter=100,
-            max_depth=10,
+            max_iter=25,
+            max_depth=4,
             random_state=SEED,
         )
     elif model_name == 'lgbm':
+        # https://lightgbm.readthedocs.io/en/latest/Parameters-Tuning.html
         return LGBMClassifier(
-            n_estimators=100,
-            max_depth=10,
+            n_estimators=25,
+            min_gain_to_split=0.5,
+            max_depth=4,
+            learning_rate=0.05,
+            boosting_type='gbdt',
+            objective='binary',
             random_state=SEED,
-            n_jobs=N_JOBS,
+            verbose=-1,
         )
     elif model_name == 'xgb':
         return XGBClassifier(
-            n_estimators=200,
-            max_depth=10,
+            n_estimators=25,
+            max_depth=4,
             objective='binary:logistic', 
             tree_method='hist',
             enable_categorical=True,
@@ -146,27 +156,45 @@ def get_model(model_name, **kwargs):
     
 skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 
-f1_macros = []
-for train_idx, test_idx in skf.split(X, y):
-    model = get_model('xgb')# get_model('catboost', cat_features=categorical_cols)
-    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+# f1_binary = []
+# for train_idx, test_idx in skf.split(X, y):
+#     model = get_model('xgb')
+#     X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+#     y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+#     model.fit(X_train, y_train)
+#     y_pred = model.predict(X_test)
+#     f1_binary.append(f1_score(y_test, y_pred, average='binary'))
+# print(f'f1_binary: {np.mean(f1_binary)}')
+# print(f'f1_binary: {np.std(f1_binary)}')
 
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+model = get_model('lgbm')
+# get_model('xgb')
+# get_model('lgbm')
+# get_model('catboost', cat_features=categorical_cols)
 
-    print(classification_report(y_test, y_pred))
-    # print(confusion_matrix(y_test, y_pred))
-
-    f1_macros.append(f1_score(y_test, y_pred, average='binary'))
-print(f'f1_macro: {np.mean(f1_macros)}')
+scores = cross_val_score(model, X, y, cv=skf, scoring="f1")
+print("Scores:", scores)
+print("Mean:", scores.mean())
+print("Standard Deviation:", scores.std())
 
 # 5. Compare models
 # 6. Tune hyperparameters
 # 7. Make predictions
 # 8. Save model
-model = get_model('xgb')#get_model('catboost', cat_features=categorical_cols)
-model.fit(X, y)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=SEED, stratify=y)
+model.fit(X_train, y_train)
+
+FACTOR = 0.48
+# y_pred = model.predict(X_train)
+y_pred = (model.predict_proba(X_train)[:, 1] > FACTOR).astype(int)
+print(classification_report(y_train, y_pred))
+# print(confusion_matrix(y_train, y_pred))
+
+# y_pred = model.predict(X_test)
+y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
+print(classification_report(y_test, y_pred))
+# print(confusion_matrix(y_test, y_pred))
 
 # 9. Load model
 # 10. Interpret model
@@ -175,19 +203,18 @@ model.fit(X, y)
 # 		- Individual conditional expectation plots
 # 		- LIME
 # 		- ELI5
-# print(model.get_feature_importance(prettified=True))
+importances = model.feature_importances_
+feature_names = X.columns
+feature_importances = pd.DataFrame(sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True), columns=['feature', 'importance'])
+feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', figsize=(10, 6))
+
 
 # 11. Deploy model/Submit predictions
 # 12. Monitor model
 print(X.columns)
 df_test[TARGET_VAR] = model.predict(df_test[X.columns])
 print(df_test[TARGET_VAR].value_counts(normalize=True))
+print(df_test[TARGET_VAR].value_counts())
 
-df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
-    .to_csv('../submissions/submission_xgb_feature_eng_graph_degree.csv', index=False)
-
-
-importances = model.feature_importances_
-feature_names = X_train.columns
-feature_importances = sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True)
-feature_importances
+# df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
+#     .to_csv('../submissions/submission.csv', index=False)
