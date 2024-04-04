@@ -43,6 +43,8 @@ SEED = 42
 np.random.seed(SEED)
 random.seed(SEED)
 
+pd.set_option('display.max_columns', 500)
+
 TARGET_VAR = 'abandono_6meses'
 N_FOLDS = 3
 N_JOBS = os.cpu_count() // 2.5
@@ -191,7 +193,47 @@ skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 # print(f'f1_binary: {np.mean(f1_binary)}')
 # print(f'f1_binary: {np.std(f1_binary)}')
 
-model = get_model('xgb')
+def create_stacking_models():
+    base_models = list()
+    base_models.append(('lgbm',  LGBMClassifier(
+                            n_estimators=25,
+                            min_gain_to_split=0.5,
+                            max_depth=4,
+                            learning_rate=0.05,
+                            boosting_type='gbdt',
+                            objective='binary',
+                            random_state=SEED,
+                            verbose=-1,
+                        )
+                       ))
+    base_models.append(('xgb', XGBClassifier(
+                                n_estimators=25,
+                                max_depth=4,
+                                objective='binary:logistic', 
+                                tree_method='hist',
+                                enable_categorical=True,
+                                grow_policy='lossguide',
+                                random_state=SEED,
+                            )
+                       ))    
+    #base_models.append(('GNB', GaussianNB()))
+    #base_models.append(('RF', RandomForestClassifier(n_estimators= 200, 
+    #                                               oob_score = True, 
+    #                                               class_weight = "balanced", 
+    #                                               random_state = 20, 
+    #                                               ccp_alpha = 0.1)
+    #                   ))
+
+    
+    meta_model = LogisticRegression()
+    final_model = StackingClassifier(estimators = base_models, ##Base estimators which will be stacked together
+                                     final_estimator = meta_model,
+                                     cv = 5
+                                    )
+    return final_model
+
+
+model = create_stacking_models()
 # get_model('xgb')
 # get_model('lgbm')
 # get_model('catboost', cat_features=categorical_cols)
@@ -263,10 +305,113 @@ df_test[TARGET_VAR] = (
 print(df_test[TARGET_VAR].value_counts(normalize=True))
 print(df_test[TARGET_VAR].value_counts())
 
-best_submission = pd.read_csv('../submissions/xgb_hoy.csv')
+best_submission = pd.read_csv('../submissions/xgb_all_join_jefe.csv')
 print(best_submission[TARGET_VAR].value_counts(normalize=True))
 best_submission['equal'] = (best_submission[TARGET_VAR] == df_test[TARGET_VAR])
 print(best_submission['equal'].value_counts(normalize=True))
 
 df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
-    .to_csv('../submissions/xgb_all_join_jefe.csv', index=False)
+    .to_csv('../submissions/xgb_all_join_jefe_stacking.csv', index=False)
+
+
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import StackingClassifier
+from sklearn.linear_model import LogisticRegression
+
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import RepeatedStratifiedKFold
+
+X.fillna(X.mean(), inplace=True)
+
+def create_stacking_models():
+    base_models = list()
+    base_models.append(('lgbm',  LGBMClassifier(
+                            n_estimators=25,
+                            min_gain_to_split=0.5,
+                            max_depth=4,
+                            learning_rate=0.05,
+                            boosting_type='gbdt',
+                            objective='binary',
+                            random_state=SEED,
+                            verbose=-1,
+                        )
+                       ))
+    base_models.append(('xgb', XGBClassifier(
+                                n_estimators=25,
+                                max_depth=4,
+                                objective='binary:logistic', 
+                                tree_method='hist',
+                                enable_categorical=True,
+                                grow_policy='lossguide',
+                                random_state=SEED,
+                            )
+                       ))    
+    #base_models.append(('GNB', GaussianNB()))
+    #base_models.append(('RF', RandomForestClassifier(n_estimators= 200, 
+    #                                               oob_score = True, 
+    #                                               class_weight = "balanced", 
+    #                                               random_state = 20, 
+    #                                               ccp_alpha = 0.1)
+    #                   ))
+
+    
+    meta_model = LogisticRegression()
+    final_model = StackingClassifier(estimators = base_models, ##Base estimators which will be stacked together
+                                     final_estimator = meta_model,
+                                     cv = 5
+                                    )
+    return final_model
+
+def models_all():
+    all_models = dict()
+    all_models['lgbm']= LGBMClassifier(
+                        n_estimators=25,
+                        min_gain_to_split=0.5,
+                        max_depth=4,
+                        learning_rate=0.05,
+                        boosting_type='gbdt',
+                        objective='binary',
+                        random_state=SEED,
+                        verbose=-1,
+                    )
+    all_models['xgb']= XGBClassifier(
+                                n_estimators=25,
+                                max_depth=4,
+                                objective='binary:logistic', 
+                                tree_method='hist',
+                                enable_categorical=True,
+                                grow_policy='lossguide',
+                                random_state=SEED,
+                            )
+
+    #all_models['RF']= RandomForestClassifier(n_estimators= 200, 
+    #                                               oob_score = True, 
+    #                                               class_weight = "balanced", 
+    #                                               random_state = 20, 
+    #                                               ccp_alpha = 0.15)
+    #all_models['GNB'] = GaussianNB()
+    all_models['Stacking'] = create_stacking_models()
+    return all_models
+
+def evaluate_model(model):
+    cv = RepeatedStratifiedKFold(n_splits=10, n_repeats=3, random_state=42)
+    scores = cross_val_score(model, X, y, scoring='f1_weighted', cv=cv, error_score='raise')
+    return scores
+
+
+model_results = list()
+models = models_all()
+names = list()
+
+# Create a for loop that iterates over each name, model in models dictionary 
+for name, model in models.items():
+    scores = evaluate_model(model)
+    model_results.append(scores)
+    names.append(name)
+#     print(model_results)
+    print('>%s %.3f (%.3f) \n' % (name, np.mean(scores), np.std(scores)))

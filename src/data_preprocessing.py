@@ -64,7 +64,7 @@ mpl.rcParams['figure.dpi'] = 100
 warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore')
 
-ds_type = 'test'
+ds_type = 'train'
 df = pd.read_csv(f'../data/raw/{ds_type}_data.csv', sep=';')
 
 df['id_colaborador'] = df['id_colaborador'].astype('string')
