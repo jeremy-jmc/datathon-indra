@@ -14,7 +14,7 @@ from catboost import CatBoostClassifier#, CatBoostRegressor, Pool, cv
 from lightgbm import LGBMClassifier#, LGBMRegressor
 from xgboost import XGBClassifier#, XGBRegressor
 # import pycaret
-# import shap
+import shap
 # import eli5
 # import lime
 # import optuna
@@ -43,6 +43,11 @@ SEED = 42
 np.random.seed(SEED)
 random.seed(SEED)
 
+TARGET_VAR = 'abandono_6meses'
+N_FOLDS = 3
+N_JOBS = os.cpu_count() // 2.5
+
+
 # Steps:
 # 1. Load data
 deleted_columns = [# 'degree', 
@@ -56,7 +61,7 @@ dt_test = pd.read_parquet('../data/processed/test_data.parquet').drop(columns=de
 
 df_train = pd.merge(
     dt_train,
-    dt_train[['id_colaborador', 'edad', 'dias_baja_salud', 'performance_score', 'modalidad_trabajo', 'psi_score', 'ratio_salario_distancia', 'degree']],
+    dt_train.copy().drop(columns=['id_ultimo_jefe', TARGET_VAR]),#[['id_colaborador', 'edad', 'dias_baja_salud', 'performance_score', 'modalidad_trabajo', 'psi_score', 'ratio_salario_distancia', 'degree']],
     left_on='id_ultimo_jefe',
     right_on='id_colaborador',
     suffixes=('', '_jefe'),
@@ -64,7 +69,7 @@ df_train = pd.merge(
 )
 df_test = pd.merge(
     dt_test,
-    dt_test[['id_colaborador', 'edad', 'dias_baja_salud', 'performance_score', 'modalidad_trabajo', 'psi_score', 'ratio_salario_distancia', 'degree']],
+    dt_test.copy().drop(columns=['id_ultimo_jefe']),#dt_test[['id_colaborador', 'edad', 'dias_baja_salud', 'performance_score', 'modalidad_trabajo', 'psi_score', 'ratio_salario_distancia', 'degree']],
     left_on='id_ultimo_jefe',
     right_on='id_colaborador',
     suffixes=('', '_jefe'),
@@ -78,9 +83,6 @@ print(f'categorical_cols: {categorical_cols}')
 print(f'numerical_cols: {numerical_cols}')
 print(f'other_cols: {other_cols}')
 
-TARGET_VAR = 'abandono_6meses'
-N_FOLDS = 3
-N_JOBS = os.cpu_count() // 2.5
 
 # 2. Prepare data
 # 	Feature engineering:
@@ -207,7 +209,7 @@ print("Standard Deviation:", scores.std())
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=SEED, stratify=y)
 model.fit(X_train, y_train)
 
-FACTOR = 0.25
+FACTOR = 0.4
 # y_pred = model.predict(X_train)
 y_pred = (model.predict_proba(X_train)[:, 1] > FACTOR).astype(int)
 print(classification_report(y_train, y_pred))
@@ -225,11 +227,19 @@ print(classification_report(y_test, y_pred))
 # 		- Individual conditional expectation plots
 # 		- LIME
 # 		- ELI5
-# importances = model.feature_importances_
-# feature_names = X.columns
-# feature_importances = pd.DataFrame(sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True), columns=['feature', 'importance'])
-# feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', figsize=(10, 6))
+importances = model.feature_importances_
+feature_names = X.columns
+feature_importances = pd.DataFrame(sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True), columns=['feature', 'importance'])
+feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', figsize=(10, 6))
 
+# shap.initjs()
+
+# explainer = shap.TreeExplainer(model)
+
+# shap_values = explainer.shap_values(X_test)
+# print("Variable Importance Plot - Global Interpretation")
+# figure = plt.figure()
+# shap.summary_plot(shap_values, X_test)
 
 # 11. Deploy model/Submit predictions
 # 12. Monitor model
@@ -243,4 +253,4 @@ print(df_test[TARGET_VAR].value_counts(normalize=True))
 print(df_test[TARGET_VAR].value_counts())
 
 df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
-    .to_csv('../submissions/xgb_hoy.csv', index=False)
+    .to_csv('../submissions/xgb_all.csv', index=False)
