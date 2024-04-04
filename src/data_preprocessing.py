@@ -83,11 +83,14 @@ df['ratio_salario_distancia'] = df['salario'] / df['distancia_oficina']
 # performance_score fillna mean
 df['performance_score'] = df['performance_score'].fillna(df['performance_score'].mean())
 # psi_score
-df['ratio_salario_psi_score'] = df['salario'] / df['psi_score']
+df['ratio_salario_psi_score'] = df['salario'] * 1000 / df['psi_score']
 df['fecha_incorporacion'] = pd.to_datetime(df['fecha_incorporacion'], format='%d/%m/%Y')
 df['edad_cuando_se_incorporo'] = (df['fecha_incorporacion'] - df['fecha_nacimiento']).dt.days // 365
-df['mes_incorporacion'] = df['fecha_incorporacion'].dt.month
-df['trimestre_incorporacion'] = df['fecha_incorporacion'].dt.quarter
+df['anio_incorporacion'] = df['fecha_incorporacion'].dt.year
+df['anio_incorporacion'] = df['anio_incorporacion'].astype('category')
+df['mes_incorporacion'] = df['fecha_incorporacion'].dt.month.astype('category')
+df['mes_incorporacion'] = df['mes_incorporacion'].astype('category')
+df['trimestre_incorporacion'] = df['fecha_incorporacion'].dt.quarter.astype('category')
 df['trimestre_incorporacion'] = df['trimestre_incorporacion'].replace({1: 'Q1', 2: 'Q2', 3: 'Q3', 4: 'Q4'}).astype('category')
 df['tiempo_empresa'] = (datetime.datetime.now() - df['fecha_incorporacion']).dt.days // 365
 df['estado_civil'] = df['estado_civil'].astype('category')
@@ -115,7 +118,7 @@ OBS:
     - A partir del grafo podemos calcular la jerarquia de cada empleado
 """
 
-df['mes_incorporacion'].plot(kind='hist', bins=4)
+# df['mes_incorporacion'].plot(kind='hist', bins=4)
 
 import networkx as nx
 from pyvis.network import Network
@@ -136,6 +139,7 @@ degree_dict = dict(G.degree())
 df_degree = pd.DataFrame(list(degree_dict.items()), columns=['id_colaborador', 'degree'])
 
 df = df.merge(df_degree, on='id_colaborador', how='left')
+# df['degree'] = df['degree'].apply(lambda x: 'empleado' if x <= 1 else 'jefe').astype('category')
+# df['degree'] = df['degree'].fillna(df['degree'].mode()[0])
 
-df = df.drop(columns=['id_ultimo_jefe'])
 df.to_parquet(f'../data/processed/{ds_type}_data.parquet', index=False,)

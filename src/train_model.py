@@ -45,14 +45,31 @@ random.seed(SEED)
 
 # Steps:
 # 1. Load data
-deleted_columns = ['degree', 
+deleted_columns = [# 'degree', 
                 #    'ratio_salario_psi_score', 'ratio_salario_distancia', 
                 #    'edad_cuando_se_incorporo', 'trimestre_incorporacion',
                 #    'mes_incorporacion', 'edad',
                 #    'performance_score'
                    ]
-df_train = pd.read_parquet('../data/processed/train_data.parquet').drop(columns=deleted_columns)
-df_test = pd.read_parquet('../data/processed/test_data.parquet').drop(columns=deleted_columns)
+dt_train = pd.read_parquet('../data/processed/train_data.parquet').drop(columns=deleted_columns)
+dt_test = pd.read_parquet('../data/processed/test_data.parquet').drop(columns=deleted_columns)
+
+df_train = pd.merge(
+    dt_train,
+    dt_train[['id_colaborador', 'edad', 'dias_baja_salud', 'performance_score', 'modalidad_trabajo', 'psi_score', 'ratio_salario_distancia', 'degree']],
+    left_on='id_ultimo_jefe',
+    right_on='id_colaborador',
+    suffixes=('', '_jefe'),
+    how='left'
+)
+df_test = pd.merge(
+    dt_test,
+    dt_test[['id_colaborador', 'edad', 'dias_baja_salud', 'performance_score', 'modalidad_trabajo', 'psi_score', 'ratio_salario_distancia', 'degree']],
+    left_on='id_ultimo_jefe',
+    right_on='id_colaborador',
+    suffixes=('', '_jefe'),
+    how='left'
+)
 
 categorical_cols = df_train.select_dtypes(include=['category']).columns.to_list()
 numerical_cols = df_train.select_dtypes(include=['number']).columns.to_list()
@@ -62,7 +79,7 @@ print(f'numerical_cols: {numerical_cols}')
 print(f'other_cols: {other_cols}')
 
 TARGET_VAR = 'abandono_6meses'
-N_FOLDS = 10
+N_FOLDS = 3
 N_JOBS = os.cpu_count() // 2.5
 
 # 2. Prepare data
@@ -87,7 +104,8 @@ print(data_train.columns)
 print(data_train[TARGET_VAR].value_counts(normalize=True))
 
 X = data_train.drop(columns=[TARGET_VAR])
-X = pd.get_dummies(X)
+train_cols = X.columns
+X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
 y = data_train[TARGET_VAR]
 
 # 3. Build a baseline model
@@ -154,6 +172,7 @@ def get_model(model_name, **kwargs):
             objective='binary:logistic', 
             tree_method='hist',
             enable_categorical=True,
+            grow_policy='lossguide',
             random_state=SEED,
         )
     
@@ -170,8 +189,7 @@ skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 # print(f'f1_binary: {np.mean(f1_binary)}')
 # print(f'f1_binary: {np.std(f1_binary)}')
 
-model = OneVsOneClassifier(LinearSVC(dual="auto", random_state=42))
-# SVC(random_state=SEED, probability=True)
+model = get_model('xgb')
 # get_model('xgb')
 # get_model('lgbm')
 # get_model('catboost', cat_features=categorical_cols)
@@ -189,14 +207,14 @@ print("Standard Deviation:", scores.std())
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=SEED, stratify=y)
 model.fit(X_train, y_train)
 
-FACTOR = 0.48
-y_pred = model.predict(X_train)
-# y_pred = (model.predict_proba(X_train)[:, 1] > FACTOR).astype(int)
+FACTOR = 0.25
+# y_pred = model.predict(X_train)
+y_pred = (model.predict_proba(X_train)[:, 1] > FACTOR).astype(int)
 print(classification_report(y_train, y_pred))
 # print(confusion_matrix(y_train, y_pred))
 
-y_pred = model.predict(X_test)
-# y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
+# y_pred = model.predict(X_test)
+y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
 print(classification_report(y_test, y_pred))
 # print(confusion_matrix(y_test, y_pred))
 
@@ -215,11 +233,14 @@ print(classification_report(y_test, y_pred))
 
 # 11. Deploy model/Submit predictions
 # 12. Monitor model
-print(X.columns)
-df_test = pd.get_dummies(df_test)
-df_test[TARGET_VAR] = model.predict(df_test[X.columns])
+# print(X.columns)
+
+df_test[TARGET_VAR] = (
+    model.predict_proba(pd.get_dummies(df_test[train_cols], columns=categorical_cols, drop_first=True))
+    [:, 1] > FACTOR
+).astype(int)
 print(df_test[TARGET_VAR].value_counts(normalize=True))
 print(df_test[TARGET_VAR].value_counts())
 
-# df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
-#     .to_csv('../submissions/submission.csv', index=False)
+df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
+    .to_csv('../submissions/xgb_hoy.csv', index=False)
