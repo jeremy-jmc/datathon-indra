@@ -24,7 +24,7 @@ import shap
 # import statsmodels.formula.api as smf
 # import statsmodels.stats.api as sms
 
-from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split# , GridSearchCV, KFold, RepeatedStratifiedKFold
+from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split, cross_val_predict# , GridSearchCV, KFold, RepeatedStratifiedKFold
 from sklearn.metrics import f1_score, confusion_matrix, classification_report# , jaccard_score
 # from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.neighbors import KDTree, KNeighborsClassifier
@@ -196,10 +196,22 @@ model = get_model('xgb')
 # get_model('lgbm')
 # get_model('catboost', cat_features=categorical_cols)
 
-scores = cross_val_score(model, X, y, cv=skf, scoring="f1")
+FACTOR = 0.25
+scores = cross_val_score(model, X, y, cv=skf, scoring='f1')
 print("Scores:", scores)
 print("Mean:", scores.mean())
-print("Standard Deviation:", scores.std())
+print("Std:", scores.std())
+
+f1_scores = []
+for X_train_idx, X_test_idx in skf.split(X, y):
+    X_train, X_test = X.iloc[X_train_idx], X.iloc[X_test_idx]
+    y_train, y_test = y.iloc[X_train_idx], y.iloc[X_test_idx]
+    model.fit(X_train, y_train)
+    y_pred = model.predict_proba(X_test)[:, 1] > FACTOR
+
+    f1_scores.append(f1_score(y_test, y_pred, average='binary'))
+print(f'f1_scores mean: {np.mean(f1_scores)}')
+print(f'f1_scores std: {np.std(f1_scores)}')
 
 # 5. Compare models
 # 6. Tune hyperparameters
@@ -209,7 +221,6 @@ print("Standard Deviation:", scores.std())
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=SEED, stratify=y)
 model.fit(X_train, y_train)
 
-FACTOR = 0.4
 # y_pred = model.predict(X_train)
 y_pred = (model.predict_proba(X_train)[:, 1] > FACTOR).astype(int)
 print(classification_report(y_train, y_pred))
@@ -230,7 +241,7 @@ print(classification_report(y_test, y_pred))
 importances = model.feature_importances_
 feature_names = X.columns
 feature_importances = pd.DataFrame(sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True), columns=['feature', 'importance'])
-feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', figsize=(10, 6))
+feature_importances.plot(kind='barh', x='feature', y='importance', color='blue')
 
 # shap.initjs()
 
@@ -252,5 +263,10 @@ df_test[TARGET_VAR] = (
 print(df_test[TARGET_VAR].value_counts(normalize=True))
 print(df_test[TARGET_VAR].value_counts())
 
+best_submission = pd.read_csv('../submissions/xgb_hoy.csv')
+print(best_submission[TARGET_VAR].value_counts(normalize=True))
+best_submission['equal'] = (best_submission[TARGET_VAR] == df_test[TARGET_VAR])
+print(best_submission['equal'].value_counts(normalize=True))
+
 df_test[['id_colaborador', TARGET_VAR]].rename(columns={'id_colaborador': 'ID'})\
-    .to_csv('../submissions/xgb_all.csv', index=False)
+    .to_csv('../submissions/xgb_all_join_jefe.csv', index=False)
