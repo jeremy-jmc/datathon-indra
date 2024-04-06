@@ -175,7 +175,7 @@ def get_model(model_name, **kwargs):
             tree_method='hist',
             enable_categorical=True,
             grow_policy='lossguide',
-            importance_type='total_cover', # 'weight', 'gain', 'cover', 'total_gain', 'total_cover'
+            importance_type='total_cover', # 'weight', 'gain', 'cover', 'total_gain', 'total_cover'. Default: 'gain'
             random_state=SEED,
         )
     
@@ -225,13 +225,13 @@ model.fit(X_train, y_train)
 # y_pred = model.predict(X_train)
 y_pred = (model.predict_proba(X_train)[:, 1] > FACTOR).astype(int)
 # print(classification_report(y_train, y_pred))
-# print(confusion_matrix(y_train, y_pred))
+print(confusion_matrix(y_train, y_pred))
 print(f'f1_score train: {f1_score(y_train, y_pred, average="binary")}')
 
 # y_pred = model.predict(X_test)
 y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
 # print(classification_report(y_test, y_pred))
-# print(confusion_matrix(y_test, y_pred))
+print(confusion_matrix(y_test, y_pred))
 print(f'f1_score test: {f1_score(y_test, y_pred, average="binary")}')
 
 # 9. Load model
@@ -244,21 +244,27 @@ print(f'f1_score test: {f1_score(y_test, y_pred, average="binary")}')
 importances = model.feature_importances_
 feature_names = X.columns
 feature_importances = pd.DataFrame(sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True), columns=['feature', 'importance'])
-feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', legend=False)
+feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', legend=False, figsize=(10, 10))
 plt.figure()
 
 feature_importances.loc[lambda df : df['importance'] > 0.01].plot(kind='pie', y='importance', labels=feature_importances['feature'], autopct='%1.1f%%', legend=False, figsize=(8, 8))
 plt.axis('equal')
 plt.show()
+shap.initjs()
 
-# shap.initjs()
+explainer = shap.Explainer(model, algorithm='tree') # , data=X_train , model_output='probability'
 
-# explainer = shap.TreeExplainer(model)
+shap_values = explainer.shap_values(X_test)
+print("Variable Importance Plot - Global Interpretation")
+figure = plt.figure()
+shap.summary_plot(shap_values, X_test)
 
-# shap_values = explainer.shap_values(X_test)
-# print("Variable Importance Plot - Global Interpretation")
-# figure = plt.figure()
-# shap.summary_plot(shap_values, X_test)
+shap_values = explainer(X_test)
+# shap.plots.waterfall(shap_values[0])
+shap.plots.beeswarm(shap_values)
+
+shap.summary_plot(shap_values, X_test, plot_type="bar", class_inds=y_test)
+
 
 # 11. Deploy model/Submit predictions
 # 12. Monitor model

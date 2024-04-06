@@ -119,26 +119,37 @@ OBS:
 """
 
 # df['mes_incorporacion'].plot(kind='hist', bins=4)
-
 import networkx as nx
 from pyvis.network import Network
 
 # create a graph from the columns id_colaborador and id_ultimo_jefe
 G = nx.from_pandas_edgelist(df.dropna(how='any'), source='id_colaborador', target='id_ultimo_jefe')
 
-# # create a network from the graph
-# nt = Network("750px", "1500px", notebook=True)
-# nt.force_atlas_2based(gravity=-50)
-# nt.from_nx(G)
-
-# nt.show_buttons(filter_=['physics'])
-# nt.show('nx.html')
-
-
 degree_dict = dict(G.degree())
 df_degree = pd.DataFrame(list(degree_dict.items()), columns=['id_colaborador', 'degree'])
 
 df = df.merge(df_degree, on='id_colaborador', how='left')
+
+# create a network from the graph
+nt = Network("750px", "1500px", notebook=True)
+nt.force_atlas_2based(gravity=-50)
+
+ls = []
+genre_color = {'Hombre': 'blue', 'Mujer': 'red'}
+for key, value in degree_dict.items():
+    genre = df[df['id_colaborador'] == key]['genero'].values
+    color = 'green'
+    if genre:
+        color = genre_color[genre[0]]
+    nt.add_node(key, title=key, size=value*5, color=color)
+print(set(ls))
+
+for idx, row in df[['id_colaborador', 'id_ultimo_jefe']].dropna(how='any').iterrows():
+    nt.add_edge(row['id_colaborador'], row['id_ultimo_jefe'], title=f"{row['id_colaborador']} -> {row['id_ultimo_jefe']}")
+
+nt.show_buttons(filter_=['physics'])
+nt.show('nx.html')
+
 # df['degree'] = df['degree'].apply(lambda x: 'empleado' if x <= 1 else 'jefe').astype('category')
 # df['degree'] = df['degree'].fillna(df['degree'].mode()[0])
 
