@@ -37,12 +37,16 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, plot_tre
 from sklearn.ensemble import IsolationForest, HistGradientBoostingClassifier, RandomForestClassifier, AdaBoostClassifier
 from sklearn.multiclass import OneVsOneClassifier
 from sklearn.svm import SVC, LinearSVC
+from sklearn.feature_selection import SelectFromModel
 # from sklearn.preprocessing import RobustScaler, StandardScaler, MinMaxScaler
+from IPython.display import display
 
 SEED = 42
 np.random.seed(SEED)
+np.set_printoptions(precision=2)
+pd.set_option('display.float_format', lambda x: '%.2f' % x)
+pd.set_option('display.max_columns', None)
 random.seed(SEED)
-
 TARGET_VAR = 'abandono_6meses'
 N_FOLDS = 3
 N_JOBS = os.cpu_count() // 2.5
@@ -224,15 +228,81 @@ model.fit(X_train, y_train)
 
 # y_pred = model.predict(X_train)
 y_pred = (model.predict_proba(X_train)[:, 1] > FACTOR).astype(int)
+y_proba = model.predict_proba(X_train)[:, 1]
 # print(classification_report(y_train, y_pred))
-print(confusion_matrix(y_train, y_pred))
+print(confusion_matrix(y_train, y_pred, labels=[0, 1]))
+print(confusion_matrix(y_train, y_pred, normalize='true'))
 print(f'f1_score train: {f1_score(y_train, y_pred, average="binary")}')
+
+X_train_edit = (
+    X_train
+    .copy()
+    .assign(
+        proba=y_proba, 
+        # ground_truth=y_train
+        )
+)
+df_false_positives = X_train_edit[(y_train == 0) & (y_pred == 1)]
+df_false_negatives = X_train_edit[(y_train == 1) & (y_pred == 0)]
+
+df_false_positives_with_jefe = df_false_positives.dropna(how='any')
+df_false_positives_without_jefe = df_false_positives[df_false_positives.isnull().any(axis=1)] 
+
+# display(
+#     pd.crosstab(pd.from_dummies(df_false_positives_with_jefe[['estado_civil_Divorciado', 'estado_civil_Soltero', 'estado_civil_Viudo', 'estado_civil_Casado']]), 
+#                 pd.from_dummies(df_false_positives_with_jefe[['estado_civil_jefe_Divorciado', 'estado_civil_jefe_Soltero', 'estado_civil_jefe_Viudo', 'estado_civil_jefe_Casado']]), 
+#                 # normalize=True
+#                 )
+# )
+
+display(
+    pd.crosstab(df_false_positives_with_jefe['modalidad_trabajo_Presencial'], 
+                df_false_positives_with_jefe['modalidad_trabajo_jefe_Presencial'], 
+                # normalize=True
+                )
+)
+# df_false_positives_with_jefe['proba'].plot(kind='hist')
+
 
 # y_pred = model.predict(X_test)
 y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
 # print(classification_report(y_test, y_pred))
-print(confusion_matrix(y_test, y_pred))
+print(confusion_matrix(y_test, y_pred, labels=[0, 1]))
+print(confusion_matrix(y_test, y_pred, labels=[0, 1], normalize='true'))
 print(f'f1_score test: {f1_score(y_test, y_pred, average="binary")}')
+
+f1_list, false_neg, false_pos = [], [], []
+thresholds = np.sort(np.unique(model.feature_importances_))
+for thresh in thresholds:
+    selection = SelectFromModel(model, threshold=thresh, prefit=True)
+    select_X_train = selection.transform(X_train.values)
+
+    selection_model = get_model('xgb')
+    selection_model.fit(select_X_train, y_train)
+
+    select_X_test = selection.transform(X_test.values)
+    y_pred = selection_model.predict_proba(select_X_test)[:, 1] > FACTOR
+
+    false_positives = np.sum((y_test == 0) & (y_pred == 1)) / len(y_test)
+    false_negatives = np.sum((y_test == 1) & (y_pred == 0)) / len(y_test)
+    f1 = f1_score(y_test, y_pred, average="binary")
+
+    print(f'thresh={thresh:.5f}, f1_score={f1:.5f}')
+    f1_list.append(f1)
+    false_neg.append(false_negatives)
+    false_pos.append(false_positives)
+
+plt.figure(figsize=(10, 8))
+plt.plot(thresholds, f1_list, marker='o', color='green', label='f1_score')
+plt.legend()
+plt.show()
+
+plt.figure(figsize=(10, 8))
+plt.plot(thresholds, false_neg, marker='o', color='blue', label='false_neg')
+plt.plot(thresholds, false_pos, marker='o', color='red', label='false_pos')
+plt.legend()
+plt.show()
+
 
 # 9. Load model
 # 10. Interpret model

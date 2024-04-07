@@ -50,6 +50,8 @@
         - ¿El proyecto hace uso de técnicas avanzadas de análisis de datos y ciencia de datos? Esto podría incluir el uso de técnicas de aprendizaje automático, análisis estadístico avanzado, algoritmos de aprendizaje profundo, etc.
             - Utilizar upsampling no tiene sentido si no se entiende el negocio a profundidad. Otro motivo por el que no se uso es que los registros representa personas y no tiene sentido generar registros sinteticos.
             - No se utilizo downsampling dado que habian clases balanceadas
+            - Graph feature engineering
+                - La variable degree representa la cantidad de personas con las que ha tenido que interactuar el empleado durante su tiempo en la empresa. Se creo especialmente para los empleados de tipo jefe
     - Calidad del codigo
         - ¿Qué tan claro es el equipo exponiendo sus ideas?
         - ¿Se han utilizado elementos gráficos eficaces y se han comunicado los resultados de manera clara y convincente? 
