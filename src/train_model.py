@@ -71,6 +71,10 @@ df_train = pd.merge(
     suffixes=('', '_jefe'),
     how='left'
 )
+df_train['alto_rendimiento'] = df_train['performance_score'].apply(lambda value: value >= 80)
+print(df_train['alto_rendimiento'].value_counts())
+df_train = df_train.drop(columns=['alto_rendimiento'])
+
 df_test = pd.merge(
     dt_test,
     dt_test.copy().drop(columns=['id_ultimo_jefe']),#dt_test[['id_colaborador', 'edad', 'dias_baja_salud', 'performance_score', 'modalidad_trabajo', 'psi_score', 'ratio_salario_distancia', 'degree']],
@@ -79,6 +83,9 @@ df_test = pd.merge(
     suffixes=('', '_jefe'),
     how='left'
 )
+df_test['alto_rendimiento'] = df_test['performance_score'].apply(lambda value: value >= 80)
+print(df_test['alto_rendimiento'].value_counts())
+df_test = df_test.drop(columns=['alto_rendimiento'])
 
 categorical_cols = df_train.select_dtypes(include=['category']).columns.to_list()
 numerical_cols = df_train.select_dtypes(include=['number']).columns.to_list()
@@ -238,38 +245,51 @@ X_train_edit = (
     X_train
     .copy()
     .assign(
-        proba=y_proba, 
+        proba=y_proba,
+        alto_rendimiento=X_train['performance_score'].apply(lambda value: value >= 80),
         # ground_truth=y_train
         )
 )
-df_false_positives = X_train_edit[(y_train == 0) & (y_pred == 1)]
-df_false_negatives = X_train_edit[(y_train == 1) & (y_pred == 0)]
+df_false_positives = X_train_edit[(y_train == 0) & (y_pred == 1)].reset_index(drop=True)
+df_false_negatives = X_train_edit[(y_train == 1) & (y_pred == 0)].reset_index(drop=True)
+print(X_train_edit['alto_rendimiento'].value_counts())
 
-df_false_positives_with_jefe = df_false_positives.dropna(how='any')
-df_false_positives_without_jefe = df_false_positives[df_false_positives.isnull().any(axis=1)] 
+display(pd.concat([df_false_positives['alto_rendimiento'].value_counts(normalize=True),
+                   df_false_positives['alto_rendimiento'].value_counts()], axis=1))
+display(pd.concat([df_false_negatives['alto_rendimiento'].value_counts(normalize=True), 
+                   df_false_negatives['alto_rendimiento'].value_counts()], axis=1))
 
-# display(
-#     pd.crosstab(pd.from_dummies(df_false_positives_with_jefe[['estado_civil_Divorciado', 'estado_civil_Soltero', 'estado_civil_Viudo', 'estado_civil_Casado']]), 
-#                 pd.from_dummies(df_false_positives_with_jefe[['estado_civil_jefe_Divorciado', 'estado_civil_jefe_Soltero', 'estado_civil_jefe_Viudo', 'estado_civil_jefe_Casado']]), 
-#                 # normalize=True
-#                 )
-# )
-
-display(
-    pd.crosstab(df_false_positives_with_jefe['modalidad_trabajo_Presencial'], 
-                df_false_positives_with_jefe['modalidad_trabajo_jefe_Presencial'], 
-                # normalize=True
-                )
-)
-# df_false_positives_with_jefe['proba'].plot(kind='hist')
-
+print(f'train -> alto rendimiento(>= 80) mal clasificados: {(135/567 * 100):.2f}%')
+print(f'train -> bajo rendimiento(< 80) mal clasificados: {(336/1154 * 100):.2f}%')
 
 # y_pred = model.predict(X_test)
 y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
+y_proba = model.predict_proba(X_test)[:, 1]
 # print(classification_report(y_test, y_pred))
 print(confusion_matrix(y_test, y_pred, labels=[0, 1]))
 print(confusion_matrix(y_test, y_pred, labels=[0, 1], normalize='true'))
 print(f'f1_score test: {f1_score(y_test, y_pred, average="binary")}')
+
+X_test_edit = (
+    X_test
+    .copy()
+    .assign(
+        proba=y_proba,
+        alto_rendimiento=X_test['performance_score'].apply(lambda value: value >= 80),
+        # ground_truth=y_test
+        )
+)
+df_false_positives = X_test_edit[(y_test == 0) & (y_pred == 1)].reset_index(drop=True)
+df_false_negatives = X_test_edit[(y_test == 1) & (y_pred == 0)].reset_index(drop=True)
+
+print(X_test_edit['alto_rendimiento'].value_counts())
+display(pd.concat([df_false_positives['alto_rendimiento'].value_counts(normalize=True),
+                   df_false_positives['alto_rendimiento'].value_counts()], axis=1))
+display(pd.concat([df_false_negatives['alto_rendimiento'].value_counts(normalize=True),
+                   df_false_negatives['alto_rendimiento'].value_counts()], axis=1))
+
+print(f'test -> alto rendimiento(>= 80) mal clasificados: {(45/130 * 100):.2f}%')
+print(f'test -> bajo rendimiento(< 80) mal clasificados: {(121/301 * 100):.2f}%')
 
 f1_list, false_neg, false_pos = [], [], []
 thresholds = np.sort(np.unique(model.feature_importances_))
