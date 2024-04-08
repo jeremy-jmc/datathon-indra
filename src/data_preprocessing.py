@@ -67,6 +67,9 @@ warnings.simplefilter('ignore')
 ds_type = 'train'
 df = pd.read_csv(f'../data/raw/{ds_type}_data.csv', sep=';')
 
+# total de columnas con algun nulo
+print(df.isnull().any(axis=1).sum() / len(df))
+
 df['id_colaborador'] = df['id_colaborador'].astype('string')
 df['id_ultimo_jefe'] = df['id_ultimo_jefe'].astype('Int64').astype('string')
 df['seniority'] = df['seniority'].replace({1: 'No', 2: 'Si'}).astype('category')
@@ -103,9 +106,12 @@ df = df.rename(columns={
 print(df.isna().sum())
 print(df.dtypes)
 
-print(f'variables categoricas: {df.select_dtypes("category").columns}')
-print(f'variables numericas: {df.select_dtypes("number").columns}')
-print(f'otras variables: {df.select_dtypes(exclude=["number", "category"]).columns}')
+categorical_variables = df.select_dtypes("category").columns
+numerical_variables = df.select_dtypes("number").columns
+other_variables = df.select_dtypes(exclude=["number", "category"]).columns
+print(f'variables categoricas: {categorical_variables}')
+print(f'variables numericas: {numerical_variables}')
+print(f'otras variables: {other_variables}')
 
 
 """
@@ -135,10 +141,10 @@ nt = Network("750px", "1500px", notebook=True)
 nt.force_atlas_2based(gravity=-50)
 
 ls = []
-genre_color = {'Hombre': 'blue', 'Mujer': 'red'}
+genre_color = {'Hombre': '#006967', 'Mujer': '#ebe3cb'}
 for key, value in degree_dict.items():
     genre = df[df['id_colaborador'] == key]['genero'].values
-    color = 'green'
+    color = '#bfbfbf'
     if genre:
         color = genre_color[genre[0]]
     nt.add_node(key, title=key, size=value*5, color=color)
@@ -153,4 +159,4 @@ nt.show('nx.html')
 # df['degree'] = df['degree'].apply(lambda x: 'empleado' if x <= 1 else 'jefe').astype('category')
 # df['degree'] = df['degree'].fillna(df['degree'].mode()[0])
 
-df.to_parquet(f'../data/processed/{ds_type}_data.parquet', index=False,)
+df.to_parquet(f'../data/processed/{ds_type}_data.parquet', index=False)

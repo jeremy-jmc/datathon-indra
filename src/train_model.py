@@ -48,7 +48,7 @@ pd.set_option('display.float_format', lambda x: '%.2f' % x)
 pd.set_option('display.max_columns', None)
 random.seed(SEED)
 TARGET_VAR = 'abandono_6meses'
-N_FOLDS = 3
+N_FOLDS = 5
 N_JOBS = os.cpu_count() // 2.5
 
 
@@ -63,6 +63,7 @@ deleted_columns = [# 'degree',
 dt_train = pd.read_parquet('../data/processed/train_data.parquet').drop(columns=deleted_columns)
 dt_test = pd.read_parquet('../data/processed/test_data.parquet').drop(columns=deleted_columns)
 
+
 df_train = pd.merge(
     dt_train,
     dt_train.copy().drop(columns=['id_ultimo_jefe', TARGET_VAR]),#[['id_colaborador', 'edad', 'dias_baja_salud', 'performance_score', 'modalidad_trabajo', 'psi_score', 'ratio_salario_distancia', 'degree']],
@@ -72,7 +73,10 @@ df_train = pd.merge(
     how='left'
 )
 df_train['alto_rendimiento'] = df_train['performance_score'].apply(lambda value: value >= 80)
-print(df_train['alto_rendimiento'].value_counts())
+print(df_train[TARGET_VAR].value_counts())
+print(df_train['alto_rendimiento'].value_counts(normalize=True))
+print(df_train.loc[df_train['alto_rendimiento'] == 1, TARGET_VAR].value_counts())
+
 df_train = df_train.drop(columns=['alto_rendimiento'])
 
 df_test = pd.merge(
@@ -222,6 +226,8 @@ for X_train_idx, X_test_idx in skf.split(X, y):
     y_pred = model.predict_proba(X_test)[:, 1] > FACTOR
 
     f1_scores.append(f1_score(y_test, y_pred, average='binary'))
+
+print(f'f1_scores: {f1_scores}')
 print(f'f1_scores mean: {np.mean(f1_scores)}')
 print(f'f1_scores std: {np.std(f1_scores)}')
 
@@ -250,9 +256,9 @@ X_train_edit = (
         # ground_truth=y_train
         )
 )
+print(X_train_edit['alto_rendimiento'].value_counts())
 df_false_positives = X_train_edit[(y_train == 0) & (y_pred == 1)].reset_index(drop=True)
 df_false_negatives = X_train_edit[(y_train == 1) & (y_pred == 0)].reset_index(drop=True)
-print(X_train_edit['alto_rendimiento'].value_counts())
 
 display(pd.concat([df_false_positives['alto_rendimiento'].value_counts(normalize=True),
                    df_false_positives['alto_rendimiento'].value_counts()], axis=1))
@@ -261,6 +267,13 @@ display(pd.concat([df_false_negatives['alto_rendimiento'].value_counts(normalize
 
 print(f'train -> alto rendimiento(>= 80) mal clasificados: {(135/567 * 100):.2f}%')
 print(f'train -> bajo rendimiento(< 80) mal clasificados: {(336/1154 * 100):.2f}%')
+
+print('Segmento de interes: TRAIN')
+df_segmento_interes = X_train_edit.copy().loc[lambda df : df['alto_rendimiento'] == 1].drop(columns=['alto_rendimiento', 'proba'])
+y_pred = (model.predict_proba(df_segmento_interes)[:, 1] > FACTOR).astype(int)
+print(confusion_matrix(y_train.loc[df_segmento_interes.index], y_pred, labels=[0, 1]))
+print(confusion_matrix(y_train.loc[df_segmento_interes.index], y_pred, labels=[0, 1], normalize='true'))
+print(f1_score(y_train.loc[df_segmento_interes.index], y_pred, average='binary'))
 
 # y_pred = model.predict(X_test)
 y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
@@ -290,6 +303,14 @@ display(pd.concat([df_false_negatives['alto_rendimiento'].value_counts(normalize
 
 print(f'test -> alto rendimiento(>= 80) mal clasificados: {(45/130 * 100):.2f}%')
 print(f'test -> bajo rendimiento(< 80) mal clasificados: {(121/301 * 100):.2f}%')
+
+print('Segmento de interes: TEST')
+df_segmento_interes = X_test_edit.copy().loc[lambda df : df['alto_rendimiento'] == 1].drop(columns=['alto_rendimiento', 'proba'])
+y_pred = (model.predict_proba(df_segmento_interes)[:, 1] > FACTOR).astype(int)
+print(confusion_matrix(y_test.loc[df_segmento_interes.index], y_pred, labels=[0, 1]))
+print(confusion_matrix(y_test.loc[df_segmento_interes.index], y_pred, labels=[0, 1], normalize='true'))
+print(f1_score(y_test.loc[df_segmento_interes.index], y_pred, average='binary'))
+
 
 f1_list, false_neg, false_pos = [], [], []
 thresholds = np.sort(np.unique(model.feature_importances_))

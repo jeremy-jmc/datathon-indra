@@ -53,9 +53,8 @@
             - Graph feature engineering
                 - La variable degree representa la cantidad de personas con las que ha tenido que interactuar el empleado durante su tiempo en la empresa. Se creo especialmente para los empleados de tipo jefe
     - Calidad del codigo
-        - ¿Qué tan claro es el equipo exponiendo sus ideas?
-        - ¿Se han utilizado elementos gráficos eficaces y se han comunicado los resultados de manera clara y convincente? 
-        - ¿La demo ha sido efectiva y juntamente con el speech articulan claramente las fortalezas de la solución implementada?
+        - ¿Es el código limpio, organizado y bien documentado? 
+        - ¿Se han seguido las mejores prácticas de codificación?
     - Defensa oral y calidad de la presentacion
         - ¿Qué tan claro es el equipo exponiendo sus ideas?
         - ¿Se han utilizado elementos gráficos eficaces y se han comunicado los resultados de manera clara y convincente? 
