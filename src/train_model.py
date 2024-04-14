@@ -363,10 +363,10 @@ importances = model.feature_importances_
 feature_names = X.columns
 feature_importances = pd.DataFrame(sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True), columns=['feature', 'importance'])
 feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', legend=False, figsize=(10, 10))
-feature_importances['tipo_variable'] = feature_importances['feature'].apply(lambda col: 'jefe' if col.endswith('_jefe') else 'colaborador')
+feature_importances['tipo_variable'] = feature_importances['feature'].apply(lambda col: 'jefe' if col.endswith('_jefe') or '_jefe_' in col else 'colaborador')
 
 # feature_importances['importance_gsheet'] = feature_importances['importance'].astype(str).replace('.', ',')
-feature_importances.to_excel('./features.xlsx', index=False)
+feature_importances.to_csv('./features.csv', index=False)
 
 display(feature_importances)
 plt.figure()
