@@ -25,7 +25,7 @@ import shap
 # import statsmodels.stats.api as sms
 
 from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split, cross_val_predict# , GridSearchCV, KFold, RepeatedStratifiedKFold
-from sklearn.metrics import f1_score, confusion_matrix, classification_report# , jaccard_score
+from sklearn.metrics import f1_score, confusion_matrix, classification_report, accuracy_score
 # from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.neighbors import KDTree, KNeighborsClassifier
 # from sklearn.clustering import KMeans
@@ -44,7 +44,7 @@ from IPython.display import display
 SEED = 42
 np.random.seed(SEED)
 np.set_printoptions(precision=2)
-pd.set_option('display.float_format', lambda x: '%.2f' % x)
+pd.set_option('display.float_format', lambda x: '%.5f' % x)
 pd.set_option('display.max_columns', None)
 random.seed(SEED)
 TARGET_VAR = 'abandono_6meses'
@@ -120,9 +120,9 @@ data_train = df_train[categorical_cols + numerical_cols]
 # print(data_train.columns)
 # print(data_train[TARGET_VAR].value_counts(normalize=True))
 
-X = data_train.drop(columns=[TARGET_VAR])
-train_cols = X.columns
-X = pd.get_dummies(X, columns=categorical_cols, drop_first=True)
+X_base = data_train.drop(columns=[TARGET_VAR])
+train_cols = X_base.columns
+X = pd.get_dummies(X_base, columns=categorical_cols, drop_first=True)
 y = data_train[TARGET_VAR]
 
 # 3. Build a baseline model
@@ -190,7 +190,8 @@ def get_model(model_name, **kwargs):
             tree_method='hist',
             enable_categorical=True,
             grow_policy='lossguide',
-            importance_type='total_cover', # 'weight', 'gain', 'cover', 'total_gain', 'total_cover'. Default: 'gain'
+            # 'Coverage' measures the relative quantity of observations concerned by a feature.” - https://towardsdatascience.com/be-careful-when-interpreting-your-features-importance-in-xgboost-6e16132588e7
+            importance_type='weight', # 'weight', 'gain', 'cover', 'total_gain', 'total_cover'. Default: 'gain'
             random_state=SEED,
         )
     
@@ -223,9 +224,12 @@ for X_train_idx, X_test_idx in skf.split(X, y):
     X_train, X_test = X.iloc[X_train_idx], X.iloc[X_test_idx]
     y_train, y_test = y.iloc[X_train_idx], y.iloc[X_test_idx]
     model.fit(X_train, y_train)
-    y_pred = model.predict_proba(X_test)[:, 1] > FACTOR
 
-    f1_scores.append(f1_score(y_test, y_pred, average='binary'))
+    segmento_interes = X_test.copy().loc[lambda df : df['performance_score'] >= 80]
+
+    y_pred = model.predict_proba(segmento_interes)[:, 1] > FACTOR
+
+    f1_scores.append(f1_score(y_test[segmento_interes.index], y_pred, average='binary'))
 
 print(f'f1_scores: {f1_scores}')
 print(f'f1_scores mean: {np.mean(f1_scores)}')
@@ -274,6 +278,9 @@ y_pred = (model.predict_proba(df_segmento_interes)[:, 1] > FACTOR).astype(int)
 print(confusion_matrix(y_train.loc[df_segmento_interes.index], y_pred, labels=[0, 1]))
 print(confusion_matrix(y_train.loc[df_segmento_interes.index], y_pred, labels=[0, 1], normalize='true'))
 print(f1_score(y_train.loc[df_segmento_interes.index], y_pred, average='binary'))
+print('accuracy_score:', accuracy_score(y_train.loc[df_segmento_interes.index], y_pred))
+
+print('======================================================================================================')
 
 # y_pred = model.predict(X_test)
 y_pred = (model.predict_proba(X_test)[:, 1] > FACTOR).astype(int)
@@ -310,7 +317,7 @@ y_pred = (model.predict_proba(df_segmento_interes)[:, 1] > FACTOR).astype(int)
 print(confusion_matrix(y_test.loc[df_segmento_interes.index], y_pred, labels=[0, 1]))
 print(confusion_matrix(y_test.loc[df_segmento_interes.index], y_pred, labels=[0, 1], normalize='true'))
 print(f1_score(y_test.loc[df_segmento_interes.index], y_pred, average='binary'))
-
+print('accuracy_score:', accuracy_score(y_test.loc[df_segmento_interes.index], y_pred))
 
 f1_list, false_neg, false_pos = [], [], []
 thresholds = np.sort(np.unique(model.feature_importances_))
@@ -356,6 +363,12 @@ importances = model.feature_importances_
 feature_names = X.columns
 feature_importances = pd.DataFrame(sorted(list(zip(feature_names, importances)), key=lambda x: x[1], reverse=True), columns=['feature', 'importance'])
 feature_importances.plot(kind='barh', x='feature', y='importance', color='blue', legend=False, figsize=(10, 10))
+feature_importances['tipo_variable'] = feature_importances['feature'].apply(lambda col: 'jefe' if col.endswith('_jefe') else 'colaborador')
+
+# feature_importances['importance_gsheet'] = feature_importances['importance'].astype(str).replace('.', ',')
+feature_importances.to_excel('./features.xlsx', index=False)
+
+display(feature_importances)
 plt.figure()
 
 feature_importances.loc[lambda df : df['importance'] > 0.01].plot(kind='pie', y='importance', labels=feature_importances['feature'], autopct='%1.1f%%', legend=False, figsize=(8, 8))
@@ -365,16 +378,29 @@ shap.initjs()
 
 explainer = shap.Explainer(model, algorithm='tree') # , data=X_train , model_output='probability'
 
-shap_values = explainer.shap_values(X_test)
+df_segmento_interes = X_test_edit.copy().loc[lambda df : df['alto_rendimiento'] == 1].drop(columns=['alto_rendimiento', 'proba'])
+shap_values = explainer.shap_values(df_segmento_interes)
 print("Variable Importance Plot - Global Interpretation")
 figure = plt.figure()
-shap.summary_plot(shap_values, X_test)
+shap.summary_plot(shap_values, df_segmento_interes)
 
-shap_values = explainer(X_test)
+shap_values = explainer(df_segmento_interes)
 # shap.plots.waterfall(shap_values[0])
 shap.plots.beeswarm(shap_values)
 
-shap.summary_plot(shap_values, X_test, plot_type="bar", class_inds=y_test)
+shap.summary_plot(shap_values, df_segmento_interes, plot_type="bar", class_inds=y_test)
+
+
+from scipy.stats import pointbiserialr, chi2_contingency
+
+X_base_numerical = X_base[[col for col in X_base.columns if col in numerical_cols]]
+df_correlation = pd.DataFrame()  # Initialize an empty DataFrame
+for col in X_base_numerical.columns:
+    if X_base_numerical[col].isna().sum() > 0:
+        continue
+    correlation, p_value = pointbiserialr(X_base_numerical[col], y)
+    df_correlation = pd.concat([df_correlation, pd.DataFrame({'feature': [col], 'correlation': [correlation], 'p_value': [p_value]})], ignore_index=True)
+display(df_correlation)
 
 
 # 11. Deploy model/Submit predictions
